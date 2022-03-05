@@ -43,32 +43,42 @@ while True:
     clientRequest = clientSocket.recv(4096).decode()
     print('Received request from client:\n\n' + clientRequest + '\n')
     
-    
+    if(len(clientRequest) < 1):
+        continue
+
+
     # Extract the required information from the client request:
     # eg. webpage and file names
-    url = (clientRequest.split()[1])
-    #print('url: ', url)
+    url = clientRequest.split()[1]
     webServer = url.split('/')[1]
-    #print('webserver: ', webServer)
+    webServerPort = '80'
+    if (webServer.find(':') != -1):
+        print(webServer.split(':'))
+        temp = webServer.split(':')
+        webServer = temp[0]
+        webServerPort = temp[1]
+    print('webserver: ', webServer, '   port:  ', webServerPort)
     filename = ''
     if (url.find('/', 1) != -1):
         filename = url[url.find('/', 1)+1:]
     #print('filename: ', filename)
     
     fileExist = "false"
-    filetouse = "/" + filename
-    #print(filetouse)
+    filetouse = url[1:]
+    print(filetouse)
 
 
     try:
         # Check whether the required files exist in the cache
         # if yes,load the file and send a response back to the client
-        f = open(filetouse[1:], "r") 
+        f = open(url[1:], "r") 
         outputdata = f.readlines() 
+        print(outputdata)
         fileExist = "true"
         # ProxyServer finds a cache hit and generates a response message
-        clientSocket.send("HTTP/1.1 200 OK\r\n") 
-        clientSocket.send("Content-Type:text/html\r\n")
+        clientSocket.send(b"HTTP/1.1 200 OK\r\n") 
+        clientSocket.send(b"Content-Type:text/html\r\n")
+        clientSocket.sendall('\n'.join(outputdata).encode())
         
         print('Read file from cache')
  
@@ -77,40 +87,61 @@ while True:
         # Since the required files were not found in cache,
         # create a socket on the proxy server to send the request
         # to the actual webserver
-        if fileExist == "false": 
-            webServerSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        webServerSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             
         try:
             # Connect your client socket to the webserver at port 80
-            webServerSocket.connect((webServer, 80))
+            webServerSocket.connect((webServer, int(webServerPort)))
+            webServerSocket.settimeout(1)
             print("Connected to", webServer)
             
             try:
                 # send request to the webserver
                 req = "GET /" + filename + " HTTP/1.1\r\nHost:" + webServer + "\r\n\r\n"
                 print('Requesting webserver with:\n' + req)
+                #webServerSocket.makefile('r', 0)
                 webServerSocket.sendall(req.encode())
                 # recieve response from the webserver
                 print("Received response from webserver:\n")
                 
-                response = webServerSocket.recv(4096)
-                print(response.decode())
+                data_ls = []
+                
+                while True:
+                    try:
+                        buf = webServerSocket.recv(4096)
+                        data_ls.append(buf)
+                        print(buf)
+                        if not buf: 
+                            print('END DETECTED')
+                            break
+                    except:
+                        #print('RECV FAILED')
+                        break
+                data = b''.join(data_ls)
+                #print('EXIT RECV LOOP')
                 
                 # relay response back to the client
-                clientSocket.sendall(response)
+                clientSocket.sendall(data)
                 print('Response relayed to client')
                 
 
                 # Create a new file in the cache for the requested file
                 # and save the response for any future requests from the client
+                try:
+                    print('Saving page ' + filetouse + ' to cache...')
+                    sf = open(filetouse, 'w')
+                    sf.write(data.decode())
+                    sf.close()
+                    print('New page saved to cache')
+                except:
+                    print('Save to cache failed')
 
             except:
                 print("Request to the webserver failed")
-                clientSocket.close()
-            # Close the client socket
+                webServerSocket.close()
 
         except:
             # Unable to connect to the webserver
             print("Unable to connect to the webserver")
             
-clientSocket.close()
