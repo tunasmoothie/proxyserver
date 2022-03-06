@@ -3,6 +3,7 @@
 # an example
 import socket
 import sys
+import time
 #from socket import *
 
 
@@ -45,7 +46,8 @@ while True:
     
     if(len(clientRequest) < 1):
         continue
-
+    
+    startTime = time.time()
 
     # Extract the required information from the client request:
     # eg. webpage and file names
@@ -57,7 +59,7 @@ while True:
         temp = webServer.split(':')
         webServer = temp[0]
         webServerPort = temp[1]
-    print('webserver: ', webServer, '   port:  ', webServerPort)
+    #print('webserver: ', webServer, '   port:  ', webServerPort)
     filename = ''
     if (url.find('/', 1) != -1):
         filename = url[url.find('/', 1)+1:]
@@ -65,29 +67,30 @@ while True:
     
     fileExist = "false"
     filetouse = url[1:]
-    print(filetouse)
+    #print(filetouse)
 
 
     try:
         # Check whether the required files exist in the cache
         # if yes,load the file and send a response back to the client
-        f = open(url[1:], "r") 
-        outputdata = f.readlines() 
-        print(outputdata)
+        f = open(url[1:] + '.cache', "r") 
+        print('Cache hit, extracting data...')
+        outputdata = f.read() 
         fileExist = "true"
         # ProxyServer finds a cache hit and generates a response message
         clientSocket.send(b"HTTP/1.1 200 OK\r\n") 
         clientSocket.send(b"Content-Type:text/html\r\n")
-        clientSocket.sendall('\n'.join(outputdata).encode())
+        clientSocket.sendall(outputdata.encode())
+        endTimeCache = time.time()
         
-        print('Read file from cache')
+        print('Sent file from cache to client\nElasped time = ' + str((endTimeCache - startTime) * 1000) + 'ms')
  
     # Error handling for file not found in cache
     except IOError:
         # Since the required files were not found in cache,
         # create a socket on the proxy server to send the request
         # to the actual webserver
-        
+        print('Request was not found in cache, requesting from webserver...')
         webServerSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             
         try:
@@ -99,11 +102,11 @@ while True:
             try:
                 # send request to the webserver
                 req = "GET /" + filename + " HTTP/1.1\r\nHost:" + webServer + "\r\n\r\n"
-                print('Requesting webserver with:\n' + req)
+                print('Requesting webserver with:\n\n' + req)
                 #webServerSocket.makefile('r', 0)
                 webServerSocket.sendall(req.encode())
                 # recieve response from the webserver
-                print("Received response from webserver:\n")
+                print("Received response from webserver")
                 
                 data_ls = []
                 
@@ -111,7 +114,7 @@ while True:
                     try:
                         buf = webServerSocket.recv(4096)
                         data_ls.append(buf)
-                        print(buf)
+                        #print(buf)
                         if not buf: 
                             print('END DETECTED')
                             break
@@ -123,14 +126,16 @@ while True:
                 
                 # relay response back to the client
                 clientSocket.sendall(data)
-                print('Response relayed to client')
+                endTimeNoCache = time.time()
+                
+                print('Response relayed to client\nElasped time = ' + str((endTimeNoCache - startTime) * 1000) + 'ms')
                 
 
                 # Create a new file in the cache for the requested file
                 # and save the response for any future requests from the client
                 try:
                     print('Saving page ' + filetouse + ' to cache...')
-                    sf = open(filetouse, 'w')
+                    sf = open(filetouse + '.cache', 'w')
                     sf.write(data.decode())
                     sf.close()
                     print('New page saved to cache')
