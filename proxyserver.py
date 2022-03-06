@@ -123,6 +123,7 @@ while True:
                         break
                 data = b''.join(data_ls)
                 #print('EXIT RECV LOOP')
+                webServerSocket.close()
                 
                 # relay response back to the client
                 clientSocket.sendall(data)
